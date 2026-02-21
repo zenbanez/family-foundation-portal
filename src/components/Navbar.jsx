@@ -29,7 +29,9 @@ const Navbar = () => {
                     <div className="flex items-center gap-4">
                         <div className="hidden sm:block text-right">
                             <p className="text-sm font-medium leading-none">{user.displayName}</p>
-                            <p className="text-xs text-gold/80">Member</p>
+                            <p className="text-[10px] font-black text-gold uppercase tracking-widest mt-1 opacity-80">
+                                {user.role || 'Member'}
+                            </p>
                         </div>
                         <button
                             onClick={logout}

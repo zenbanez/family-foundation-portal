@@ -28,42 +28,62 @@ export const AuthProvider = ({ children }) => {
                     const querySnapshot = await getDocs(q);
 
                     let isWhitelisted = false;
+                    let userRole = 'member';
 
                     if (querySnapshot.empty) {
                         // AUTO-SEED: If the whitelist is completely empty, 
                         // we add the current user (likely the creator) to prevent lockout.
                         console.log("Whitelist empty. Seeding with current user:", normalizedEmail);
+                        userRole = 'admin';
                         await setDoc(doc(db, 'whitelist', normalizedEmail), {
                             email: normalizedEmail,
                             addedAt: new Date().toISOString(),
-                            role: 'admin'
+                            role: userRole
                         });
                         isWhitelisted = true;
                     } else {
                         // Regular check
                         const whitelistDoc = await getDoc(doc(db, 'whitelist', normalizedEmail));
                         isWhitelisted = whitelistDoc.exists();
+                        if (isWhitelisted) {
+                            userRole = whitelistDoc.data()?.role || 'member';
+                        }
                     }
 
                     console.log("Whitelisted check for", normalizedEmail, ":", isWhitelisted);
 
                     if (isWhitelisted) {
-                        // Ensure user exists in 'members' collection
+                        // Ensure user exists in 'members' collection and sync latest data
                         const userRef = doc(db, 'members', user.uid);
                         const userSnap = await getDoc(userRef);
+                        const loginData = {
+                            email: user.email,
+                            displayName: user.displayName,
+                            photoURL: user.photoURL,
+                            role: userRole,
+                            lastLogin: new Date().toISOString()
+                        };
 
                         if (!userSnap.exists()) {
                             await setDoc(userRef, {
-                                email: user.email,
-                                displayName: user.displayName,
-                                photoURL: user.photoURL,
-                                role: 'member',
+                                ...loginData,
                                 joinedAt: new Date().toISOString(),
                                 hasVoted: false,
                                 votes: {}
                             });
+                        } else {
+                            // Sync photo and login time even if already exists
+                            await setDoc(userRef, loginData, { merge: true });
                         }
-                        setUser(user);
+
+                        // Merge role into user object
+                        setUser({
+                            uid: user.uid,
+                            email: user.email,
+                            displayName: user.displayName,
+                            photoURL: user.photoURL,
+                            role: userRole
+                        });
                     } else {
                         console.warn("User not in whitelist. Signing out.");
                         await signOut(auth);

@@ -5,13 +5,16 @@ import { useAuth } from '../context/AuthContext';
 import { CheckCircle2, ChevronRight, BarChart3, Users, Plus } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CreateProposal from './CreateProposal';
+import ProposalDetails from './ProposalDetails';
 
 const Votes = () => {
     const { user } = useAuth();
     const [proposals, setProposals] = useState([]);
     const [userVotes, setUserVotes] = useState({});
     const [loading, setLoading] = useState(true);
-    const [view, setView] = useState('list'); // 'list' or 'create'
+    const [view, setView] = useState('list'); // 'list', 'create', or 'details'
+    const [selectedProposal, setSelectedProposal] = useState(null);
+    const [totalWhitelisted, setTotalWhitelisted] = useState(0);
 
     useEffect(() => {
         // 1. Listen for proposals
@@ -21,6 +24,11 @@ const Votes = () => {
             snapshot.forEach((doc) => p.push({ id: doc.id, ...doc.data() }));
             setProposals(p);
             setLoading(false);
+        });
+
+        // 1.5. Listen for total whitelisted members for participation stats
+        const unsubscribeWhitelist = onSnapshot(collection(db, 'whitelist'), (snapshot) => {
+            setTotalWhitelisted(snapshot.size);
         });
 
         // 2. Fetch user's current votes
@@ -33,7 +41,10 @@ const Votes = () => {
         };
         fetchUserVotes();
 
-        return () => unsubscribe();
+        return () => {
+            if (unsubscribe) unsubscribe();
+            if (unsubscribeWhitelist) unsubscribeWhitelist();
+        };
     }, [user.uid]);
 
     const handleVote = async (proposalId, optionId) => {
@@ -76,6 +87,19 @@ const Votes = () => {
         return <CreateProposal onBack={() => setView('list')} />;
     }
 
+    if (view === 'details' && selectedProposal) {
+        return (
+            <ProposalDetails
+                proposal={selectedProposal}
+                onBack={() => {
+                    setView('list');
+                    setSelectedProposal(null);
+                }}
+                totalWhitelisted={totalWhitelisted}
+            />
+        );
+    }
+
     return (
         <div className="max-w-4xl mx-auto space-y-12">
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
@@ -108,6 +132,10 @@ const Votes = () => {
                                     proposal={proposal}
                                     userVote={userVotes[proposal.id]}
                                     onVote={handleVote}
+                                    onViewDetails={() => {
+                                        setSelectedProposal(proposal);
+                                        setView('details');
+                                    }}
                                 />
                             ))}
                         </div>
@@ -118,7 +146,7 @@ const Votes = () => {
     );
 };
 
-const ProposalCard = ({ proposal, userVote, onVote }) => {
+const ProposalCard = ({ proposal, userVote, onVote, onViewDetails }) => {
     const totalVotes = proposal.totalVotes || 0;
 
     return (
@@ -165,6 +193,19 @@ const ProposalCard = ({ proposal, userVote, onVote }) => {
                         </button>
                     );
                 })}
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-bold uppercase tracking-tighter">
+                    <Users size={14} />
+                    {totalVotes} Voted
+                </div>
+                <button
+                    onClick={onViewDetails}
+                    className="flex items-center gap-1 text-gold font-bold text-xs uppercase tracking-widest hover:gap-2 transition-all"
+                >
+                    View Details <ChevronRight size={14} />
+                </button>
             </div>
         </div>
     );
