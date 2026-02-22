@@ -9,11 +9,11 @@ const CreateProposal = ({ onBack }) => {
     const { user } = useAuth();
     const [loading, setLoading] = useState(false);
     const [title, setTitle] = useState('');
-    const [category, setCategory] = useState('Primary Focus');
+    const [category, setCategory] = useState('Top Priority');
     const [description, setDescription] = useState('');
     const [options, setOptions] = useState(['', '']);
 
-    const categories = ['Foundation Name', 'Primary Focus', 'Board of Trustees'];
+    const categories = ['Top Priority', 'Education', 'Health', 'Environment', 'Governance', 'General'];
 
     const handleAddOption = () => {
         setOptions([...options, '']);

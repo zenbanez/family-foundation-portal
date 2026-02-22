@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Target, TrendingUp, Handshake, Sprout, HeartPulse, GraduationCap, Vote, ArrowRight, ShieldCheck, ScrollText, Award, Heart } from 'lucide-react';
+import { Target, TrendingUp, Handshake, Sprout, HeartPulse, GraduationCap, Vote, ArrowRight, ShieldCheck, ScrollText, Award, Heart, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '../firebase';
 import { collection, query, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
@@ -19,11 +19,11 @@ const Dashboard = () => {
             }
         });
 
-        // Fetch 3 most recent proposals
+        // Fetch more proposals to ensure we capture Top Priority items, then sort
         const q = query(
             collection(db, 'proposals'),
             orderBy('timestamp', 'desc'),
-            limit(3)
+            limit(10)
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -31,7 +31,17 @@ const Dashboard = () => {
             snapshot.forEach((doc) => {
                 proposals.push({ id: doc.id, ...doc.data() });
             });
-            setRecentProposals(proposals);
+
+            // Sort: Top Priority first, then by timestamp (desc)
+            const sorted = proposals.sort((a, b) => {
+                const aPri = a.category === 'Top Priority';
+                const bPri = b.category === 'Top Priority';
+                if (aPri && !bPri) return -1;
+                if (!aPri && bPri) return 1;
+                return 0; // Preserve timestamp order from query
+            });
+
+            setRecentProposals(sorted.slice(0, 3));
             setLoadingProposals(false);
         }, (error) => {
             console.error("Error fetching dashboard proposals:", error);
@@ -185,31 +195,43 @@ const Dashboard = () => {
                             <div className="flex justify-center py-10">
                                 <div className="w-6 h-6 border-2 border-gold border-t-navy rounded-full animate-spin" />
                             </div>
-                        ) : recentProposals.slice(0, 3).map((proposal) => (
-                            <a
-                                key={proposal.id}
-                                href="#proposals"
-                                className="block p-3 rounded-xl border border-slate-50 hover:border-gold/20 hover:bg-gold/5 transition-all text-left"
-                            >
-                                <div className="flex justify-between items-start mb-1">
-                                    <span className="text-xs font-bold text-navy truncate pr-2">{proposal.title}</span>
-                                    <span className="text-[8px] font-black text-gold uppercase bg-gold/10 px-1.5 rounded-sm shrink-0">{proposal.category}</span>
-                                </div>
-                                <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold">
-                                    <span>By {proposal.creatorName?.split(' ')[0]}</span>
-                                    <span>•</span>
-                                    <span>{proposal.totalVotes || 0} Votes</span>
-                                </div>
-                            </a>
-                        ))}
+                        ) : recentProposals.map((proposal) => {
+                            const isPriority = proposal.category === 'Top Priority';
+                            return (
+                                <a
+                                    key={proposal.id}
+                                    href={`#proposals/${proposal.id}`}
+                                    className={`block p-3 rounded-xl border transition-all text-left group relative overflow-hidden ${isPriority
+                                        ? 'border-gold bg-gold/5 shadow-md shadow-gold/5'
+                                        : 'border-slate-50 hover:border-gold/20 hover:bg-gold/5'
+                                        }`}
+                                >
+                                    <div className="flex justify-between items-start mb-1 relative z-10">
+                                        <span className={`text-xs font-bold truncate pr-2 ${isPriority ? 'text-navy' : 'text-navy'}`}>
+                                            {proposal.title}
+                                        </span>
+                                        <span className={`text-[8px] font-black uppercase px-1.5 rounded-sm shrink-0 ${isPriority ? 'bg-navy text-gold' : 'bg-gold/10 text-gold'
+                                            }`}>
+                                            {proposal.category}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold relative z-10">
+                                        <span>By {proposal.creatorName?.split(' ')[0]}</span>
+                                        <span>•</span>
+                                        <span>{proposal.totalVotes || 0} Votes</span>
+                                    </div>
+                                    {isPriority && (
+                                        <div className="absolute right-0 bottom-0 opacity-10 -mr-2 -mb-2">
+                                            <Star size={40} className="fill-gold text-gold" />
+                                        </div>
+                                    )}
+                                </a>
+                            );
+                        })}
                         {recentProposals.length === 0 && !loadingProposals && (
                             <div className="py-10 text-center text-slate-300 text-xs italic">No active proposals.</div>
                         )}
                     </div>
-
-                    <a href="#proposals" className="mt-4 py-3 bg-slate-50 text-navy rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-gold/10 transition-all text-center border border-slate-100">
-                        Submit Proposal
-                    </a>
                 </motion.div>
             </section>
 
@@ -221,16 +243,19 @@ const Dashboard = () => {
                         icon={<GraduationCap size={20} />}
                         title="Education"
                         desc="Scholarships & resources."
+                        href="#pillar/education"
                     />
                     <DensePillar
                         icon={<HeartPulse size={20} />}
                         title="Health"
                         desc="Medical & wellness."
+                        href="#pillar/health"
                     />
                     <DensePillar
                         icon={<Sprout size={20} />}
                         title="Environment"
                         desc="Sustainability goals."
+                        href="#pillar/environment"
                     />
                 </div>
 
@@ -253,8 +278,8 @@ const Dashboard = () => {
     );
 };
 
-const DensePillar = ({ icon, title, desc }) => (
-    <div className="bg-white p-5 rounded-3xl border border-slate-100 flex items-center gap-4 group hover:border-gold/30 hover:shadow-lg hover:shadow-gold/5 transition-all text-left">
+const DensePillar = ({ icon, title, desc, href }) => (
+    <a href={href} className="bg-white p-5 rounded-3xl border border-slate-100 flex items-center gap-4 group hover:border-gold/30 hover:shadow-lg hover:shadow-gold/5 transition-all text-left">
         <div className="w-10 h-10 bg-slate-50 rounded-xl flex items-center justify-center text-navy group-hover:bg-gold group-hover:text-navy transition-all shrink-0">
             {icon}
         </div>
@@ -262,7 +287,7 @@ const DensePillar = ({ icon, title, desc }) => (
             <h4 className="text-sm font-black text-navy uppercase tracking-tight">{title}</h4>
             <p className="text-[11px] text-slate-400 font-medium leading-tight">{desc}</p>
         </div>
-    </div>
+    </a>
 );
 const ProposalPreviewCard = ({ proposal }) => (
     <motion.a

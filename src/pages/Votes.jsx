@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, doc, setDoc, updateDoc, increment, getDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, updateDoc, increment, getDoc, where } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle2, ChevronRight, BarChart3, Users, Plus } from 'lucide-react';
+import { CheckCircle2, ChevronRight, BarChart3, Users, Plus, Search, Filter, Star } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CreateProposal from './CreateProposal';
 import ProposalDetails from './ProposalDetails';
@@ -15,6 +15,10 @@ const Votes = () => {
     const [view, setView] = useState('list'); // 'list', 'create', or 'details'
     const [selectedProposal, setSelectedProposal] = useState(null);
     const [totalWhitelisted, setTotalWhitelisted] = useState(0);
+
+    // UI Optimization States
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeCategory, setActiveCategory] = useState('All');
 
     useEffect(() => {
         // 1. Listen for proposals
@@ -31,21 +35,43 @@ const Votes = () => {
             setTotalWhitelisted(snapshot.size);
         });
 
-        // 2. Fetch user's current votes
-        const fetchUserVotes = async () => {
-            const userRef = doc(db, 'members', user.uid);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                setUserVotes(userSnap.data().votes || {});
-            }
-        };
-        fetchUserVotes();
+        // 2. Listen for user's specific votes across all proposals
+        const votesRef = collection(db, 'votes');
+        const qVotes = query(votesRef, where('userId', '==', user.uid));
+        const unsubscribeVotes = onSnapshot(qVotes, (snapshot) => {
+            const vMap = {};
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                vMap[data.proposalId] = data.optionId || data.specialType;
+            });
+            setUserVotes(vMap);
+        });
 
         return () => {
             if (unsubscribe) unsubscribe();
             if (unsubscribeWhitelist) unsubscribeWhitelist();
+            if (unsubscribeVotes) unsubscribeVotes();
         };
     }, [user.uid]);
+
+    // Handle deep linking from hash (e.g., #proposals/ID)
+    useEffect(() => {
+        const handleDeepLink = () => {
+            const hash = window.location.hash.replace('#', '');
+            if (hash.startsWith('proposals/') && proposals.length > 0) {
+                const id = hash.split('/')[1];
+                const found = proposals.find(p => p.id === id);
+                if (found) {
+                    setSelectedProposal(found);
+                    setView('details');
+                }
+            }
+        };
+
+        handleDeepLink();
+        window.addEventListener('hashchange', handleDeepLink);
+        return () => window.removeEventListener('hashchange', handleDeepLink);
+    }, [proposals]);
 
     const handleVote = async (proposalId, optionId) => {
         if (userVotes[proposalId]) return; // Already voted
@@ -55,12 +81,11 @@ const Votes = () => {
         const userRef = doc(db, 'members', user.uid);
 
         try {
-            // Logic for multi-select vs single select can be added here
-            // For now, assume single select per proposal
             await setDoc(voteRef, {
                 userId: user.uid,
                 proposalId,
                 optionId,
+                voteType: 'standard',
                 timestamp: new Date().toISOString()
             });
 
@@ -70,16 +95,21 @@ const Votes = () => {
                 totalVotes: increment(1)
             });
 
-            // Update user state
-            const newUserVotes = { ...userVotes, [proposalId]: optionId };
-            await updateDoc(userRef, { votes: newUserVotes, hasVoted: true });
-            setUserVotes(newUserVotes);
+            // Update user status
+            await updateDoc(userRef, { hasVoted: true });
         } catch (err) {
             console.error("Voting error:", err);
         }
     };
 
-    const categories = ['Foundation Name', 'Primary Focus', 'Board of Trustees'];
+    const categories = ['Top Priority', 'Education', 'Health', 'Environment', 'Governance', 'General'];
+
+    const filteredProposals = proposals.filter(p => {
+        const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.description.toLowerCase().includes(searchQuery.toLowerCase());
+        const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
+        return matchesSearch && matchesCategory;
+    });
 
     if (loading) return <div className="text-center py-20">Loading polls...</div>;
 
@@ -101,32 +131,93 @@ const Votes = () => {
     }
 
     return (
-        <div className="max-w-4xl mx-auto space-y-12">
-            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+        <div className="max-w-4xl mx-auto space-y-8 pb-20">
+            <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-slate-100">
                 <div className="text-left space-y-2">
                     <h1 className="text-3xl font-bold text-navy uppercase tracking-tight">Proposals</h1>
                     <p className="text-slate-500 italic">Your voice shapes our collective legacy.</p>
-                    <div className="w-24 h-1 bg-gold" />
                 </div>
 
-                <button
-                    onClick={() => setView('create')}
-                    className="btn-primary flex items-center gap-2 px-6"
-                >
-                    <Plus size={20} /> New Proposal
-                </button>
+                <div className="flex items-center gap-3">
+                    <button
+                        onClick={() => setView('create')}
+                        className="btn-primary flex items-center gap-2 px-6 shadow-xl shadow-navy/20"
+                    >
+                        <Plus size={20} /> New Proposal
+                    </button>
+                </div>
+            </div>
+
+            {/* Quick Selection & Search Section */}
+            <div className="space-y-6">
+                <div className="flex flex-col md:flex-row gap-4">
+                    <div className="relative flex-1 group">
+                        <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-gold transition-colors" size={20} />
+                        <input
+                            type="text"
+                            placeholder="Search proposals by title or keywords..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl py-4 pl-12 pr-6 outline-none focus:border-gold/30 focus:ring-4 focus:ring-gold/5 transition-all font-medium"
+                        />
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 overflow-x-auto pb-2 custom-scrollbar no-scrollbar">
+                    {['All', ...categories].map(cat => (
+                        <button
+                            key={cat}
+                            onClick={() => setActiveCategory(cat)}
+                            className={`px-6 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap border-2 ${activeCategory === cat
+                                ? 'bg-navy text-gold border-navy shadow-lg shadow-navy/20'
+                                : 'bg-white text-slate-400 border-slate-100 hover:border-gold/50 hover:text-navy'
+                                }`}
+                        >
+                            {cat}
+                        </button>
+                    ))}
+                </div>
             </div>
 
             <div className="grid gap-8">
-                {categories.map(cat => (
-                    <div key={cat} className="space-y-6">
-                        <div className="flex items-center gap-2 text-navy border-b border-slate-200 pb-2">
-                            <BarChart3 size={20} className="text-gold" />
-                            <h2 className="text-xl font-bold uppercase">{cat}</h2>
-                        </div>
+                {categories.map(cat => {
+                    const categoryProposals = filteredProposals.filter(p => p.category === cat);
+                    if (categoryProposals.length === 0) return null;
+                    if (activeCategory !== 'All' && activeCategory !== cat) return null;
 
+                    return (
+                        <div key={cat} className="space-y-6">
+                            <div className="flex items-center gap-2 text-navy border-b border-slate-200 pb-2">
+                                {cat === 'Top Priority' ? <Star size={20} className="text-gold fill-gold" /> : <BarChart3 size={20} className="text-gold" />}
+                                <h2 className="text-xl font-bold uppercase">{cat}</h2>
+                            </div>
+                            <div className="grid gap-6">
+                                {categoryProposals.map(proposal => (
+                                    <ProposalCard
+                                        key={proposal.id}
+                                        proposal={proposal}
+                                        userVote={userVotes[proposal.id]}
+                                        onVote={handleVote}
+                                        onViewDetails={() => {
+                                            setSelectedProposal(proposal);
+                                            setView('details');
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })}
+
+                {/* Legacy/Miscellaneous Catch-all */}
+                {(activeCategory === 'All' || !categories.includes(activeCategory)) && filteredProposals.some(p => !categories.includes(p.category)) && (
+                    <div className="space-y-6 pt-12">
+                        <div className="flex items-center gap-2 text-slate-400 border-b border-slate-200 pb-2">
+                            <Filter size={20} />
+                            <h2 className="text-xl font-bold uppercase">Miscellaneous / Legacy</h2>
+                        </div>
                         <div className="grid gap-4">
-                            {proposals.filter(p => p.category === cat).map(proposal => (
+                            {filteredProposals.filter(p => !categories.includes(p.category)).map(proposal => (
                                 <ProposalCard
                                     key={proposal.id}
                                     proposal={proposal}
@@ -140,7 +231,13 @@ const Votes = () => {
                             ))}
                         </div>
                     </div>
-                ))}
+                )}
+
+                {filteredProposals.length === 0 && (
+                    <div className="py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
+                        <p className="text-slate-400 font-bold italic">No proposals found matching your criteria.</p>
+                    </div>
+                )}
             </div>
         </div>
     );
@@ -148,12 +245,22 @@ const Votes = () => {
 
 const ProposalCard = ({ proposal, userVote, onVote, onViewDetails }) => {
     const totalVotes = proposal.totalVotes || 0;
+    const isTopPriority = proposal.category === 'Top Priority';
 
     return (
-        <div className="glass p-6 rounded-2xl space-y-6">
-            <div className="space-y-1">
-                <h3 className="text-lg font-bold text-navy">{proposal.title}</h3>
-                <p className="text-sm text-slate-500">{proposal.description}</p>
+        <div className={`glass p-8 rounded-[2rem] space-y-6 transition-all relative overflow-hidden group ${isTopPriority ? 'border-2 border-gold ring-4 ring-gold/5 shadow-2xl shadow-gold/10' : ''
+            }`}>
+            {isTopPriority && (
+                <div className="absolute top-0 right-0 bg-gold text-navy px-6 py-1.5 rounded-bl-2xl text-[10px] font-black uppercase tracking-tighter shadow-sm flex items-center gap-1.5">
+                    <Star size={12} className="fill-navy" /> Featured Initiative
+                </div>
+            )}
+
+            <div className="space-y-2 text-left">
+                <h3 className={`text-xl font-black transition-colors ${isTopPriority ? 'text-navy' : 'text-navy'}`}>
+                    {proposal.title}
+                </h3>
+                <p className="text-sm text-slate-500 leading-relaxed font-medium">{proposal.description}</p>
             </div>
 
             <div className="grid gap-3">
