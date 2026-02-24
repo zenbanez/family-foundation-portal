@@ -32,8 +32,11 @@ const Dashboard = () => {
                 proposals.push({ id: doc.id, ...doc.data() });
             });
 
+            // Filter for active only (handle cases where status might be missing)
+            const activeOnly = proposals.filter(p => p.status === 'active' || !p.status);
+
             // Sort: Top Priority first, then by timestamp (desc)
-            const sorted = proposals.sort((a, b) => {
+            const sorted = activeOnly.sort((a, b) => {
                 const aPri = a.category === 'Top Priority';
                 const bPri = b.category === 'Top Priority';
                 if (aPri && !bPri) return -1;
@@ -109,9 +112,6 @@ const Dashboard = () => {
                         </div>
                     </div>
 
-                    <button className="w-full py-3 bg-navy text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-gold hover:text-navy transition-all shadow-lg shadow-navy/10">
-                        View Funding Details
-                    </button>
                 </motion.div>
             </section>
 

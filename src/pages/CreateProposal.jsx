@@ -58,6 +58,7 @@ const CreateProposal = ({ onBack }) => {
                 options: optionsMap,
                 votes: votesMap,
                 totalVotes: 0,
+                status: 'active',
                 createdBy: user.uid,
                 creatorName: user.displayName,
                 timestamp: new Date().toISOString()

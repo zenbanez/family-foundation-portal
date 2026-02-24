@@ -19,6 +19,7 @@ const Votes = () => {
     // UI Optimization States
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
+    const [viewStatus, setViewStatus] = useState('active'); // 'active' or 'archived'
 
     useEffect(() => {
         // 1. Listen for proposals
@@ -108,7 +109,8 @@ const Votes = () => {
         const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
             p.description.toLowerCase().includes(searchQuery.toLowerCase());
         const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
-        return matchesSearch && matchesCategory;
+        const matchesStatus = viewStatus === 'active' ? (p.status === 'active' || !p.status) : p.status === 'archived';
+        return matchesSearch && matchesCategory && matchesStatus;
     });
 
     if (loading) return <div className="text-center py-20">Loading polls...</div>;
@@ -139,8 +141,23 @@ const Votes = () => {
                 </div>
 
                 <div className="flex items-center gap-3">
+                    <div className="bg-slate-100 p-1 rounded-2xl flex items-center mr-2">
+                        <button
+                            onClick={() => setViewStatus('active')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewStatus === 'active' ? 'bg-white text-navy shadow-sm' : 'text-slate-400 hover:text-navy'}`}
+                        >
+                            Active
+                        </button>
+                        <button
+                            onClick={() => setViewStatus('archived')}
+                            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${viewStatus === 'archived' ? 'bg-white text-navy shadow-sm' : 'text-slate-400 hover:text-navy'}`}
+                        >
+                            Archive
+                        </button>
+                    </div>
                     <button
-                        onClick={() => setView('create')}
+                        onClick={() => setViewStatus('active')} // Reset to active if creating
+                        onMouseDown={() => setView('create')}
                         className="btn-primary flex items-center gap-2 px-6 shadow-xl shadow-navy/20"
                     >
                         <Plus size={20} /> New Proposal

@@ -148,7 +148,29 @@ const ProposalDetails = ({ proposal, onBack, totalWhitelisted }) => {
         }
     };
 
+    const handleArchive = async () => {
+        if (window.confirm("Are you sure you want to archive this proposal? It will be moved to the past proposals section.")) {
+            setLoading(true);
+            try {
+                await updateDoc(doc(db, 'proposals', proposal.id), {
+                    status: 'archived'
+                });
+                onBack(); // Go back after archiving
+            } catch (err) {
+                console.error("Archive error:", err);
+                alert("Failed to archive proposal.");
+            } finally {
+                setLoading(false);
+            }
+        }
+    };
+
     const handleDelete = async () => {
+        if (proposal.status !== 'archived') {
+            alert("Only archived proposals can be deleted. Please archive this proposal first.");
+            return;
+        }
+
         if (window.confirm("Are you sure you want to PERMANENTLY delete this proposal? This action cannot be undone.")) {
             setLoading(true);
             try {
@@ -248,12 +270,23 @@ const ProposalDetails = ({ proposal, onBack, totalWhitelisted }) => {
                                             >
                                                 <Edit size={14} /> Edit
                                             </button>
-                                            <button
-                                                onClick={handleDelete}
-                                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-50 transition-all border border-red-100"
-                                            >
-                                                <Trash2 size={14} /> Delete
-                                            </button>
+                                            {proposal.status !== 'archived' ? (
+                                                <button
+                                                    onClick={handleArchive}
+                                                    disabled={loading}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-amber-500 hover:bg-amber-50 transition-all border border-amber-100"
+                                                >
+                                                    <Archive size={14} /> Archive
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={handleDelete}
+                                                    disabled={loading}
+                                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest text-red-400 hover:bg-red-50 transition-all border border-red-100"
+                                                >
+                                                    <Trash2 size={14} /> Delete
+                                                </button>
+                                            )}
                                         </>
                                     )}
                                 </div>
