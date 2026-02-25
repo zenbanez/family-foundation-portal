@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Target, TrendingUp, Handshake, Sprout, HeartPulse, GraduationCap, Vote, ArrowRight, ShieldCheck, ScrollText, Award, Heart, Star } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { db } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, doc, where } from 'firebase/firestore';
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -19,39 +19,68 @@ const Dashboard = () => {
             }
         });
 
-        // Fetch more proposals to ensure we capture Top Priority items, then sort
-        const q = query(
-            collection(db, 'proposals'),
-            orderBy('timestamp', 'desc'),
-            limit(10)
-        );
+        // Use two listeners to ensure Top Priority items are always captured
+        let priorityProposals = [];
+        let recentGeneralProposals = [];
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const proposals = [];
-            snapshot.forEach((doc) => {
-                proposals.push({ id: doc.id, ...doc.data() });
+        const updateProposals = () => {
+            // Combine: Priority first, then General
+            // Filter out any overlap (if a priority item is also in recent general)
+            const combined = [...priorityProposals];
+            const addedIds = new Set(priorityProposals.map(p => p.id));
+
+            recentGeneralProposals.forEach(p => {
+                if (!addedIds.has(p.id)) {
+                    combined.push(p);
+                }
             });
 
-            // Filter for active only (handle cases where status might be missing)
-            const activeOnly = proposals.filter(p => p.status === 'active' || !p.status);
-
-            // Sort: Top Priority first, then by timestamp (desc)
-            const sorted = activeOnly.sort((a, b) => {
+            // Final sort to be safe: Top Priority first, then by timestamp (desc)
+            const sorted = combined.sort((a, b) => {
                 const aPri = a.category === 'Top Priority';
                 const bPri = b.category === 'Top Priority';
                 if (aPri && !bPri) return -1;
                 if (!aPri && bPri) return 1;
-                return 0; // Preserve timestamp order from query
+                // If same priority/category, sort by timestamp
+                return new Date(b.timestamp) - new Date(a.timestamp);
             });
 
             setRecentProposals(sorted.slice(0, 3));
             setLoadingProposals(false);
-        }, (error) => {
-            console.error("Error fetching dashboard proposals:", error);
-            setLoadingProposals(false);
+        };
+
+        // 1. Fetch Top Priority active proposals
+        const qPriority = query(
+            collection(db, 'proposals'),
+            where('category', '==', 'Top Priority'),
+            where('status', 'in', ['active', null]), // Handle cases where status is missing
+            orderBy('timestamp', 'desc'),
+            limit(3)
+        );
+
+        const unsubscribePriority = onSnapshot(qPriority, (snapshot) => {
+            priorityProposals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            updateProposals();
         });
 
-        return () => unsubscribe();
+        // 2. Fetch Latest active proposals
+        const qRecent = query(
+            collection(db, 'proposals'),
+            where('status', 'in', ['active', null]),
+            orderBy('timestamp', 'desc'),
+            limit(5)
+        );
+
+        const unsubscribeRecent = onSnapshot(qRecent, (snapshot) => {
+            recentGeneralProposals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            updateProposals();
+        });
+
+        return () => {
+            unsubscribeEndowment();
+            unsubscribePriority();
+            unsubscribeRecent();
+        };
     }, []);
 
     return (

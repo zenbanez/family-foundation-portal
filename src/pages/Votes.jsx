@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, doc, setDoc, updateDoc, increment, getDoc, where } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, updateDoc, increment, getDoc, where, orderBy } from 'firebase/firestore';
 import { useAuth } from '../context/AuthContext';
-import { CheckCircle2, ChevronRight, BarChart3, Users, Plus, Search, Filter, Star } from 'lucide-react';
+import { CheckCircle2, ChevronRight, BarChart3, Users, Plus, Search, Filter, Star, ChevronDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import CreateProposal from './CreateProposal';
 import ProposalDetails from './ProposalDetails';
@@ -20,10 +20,11 @@ const Votes = () => {
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
     const [viewStatus, setViewStatus] = useState('active'); // 'active' or 'archived'
+    const [expandedCategories, setExpandedCategories] = useState({}); // Track which categories are expanded
 
     useEffect(() => {
         // 1. Listen for proposals
-        const q = query(collection(db, 'proposals'));
+        const q = query(collection(db, 'proposals'), orderBy('timestamp', 'desc'));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const p = [];
             snapshot.forEach((doc) => p.push({ id: doc.id, ...doc.data() }));
@@ -124,6 +125,7 @@ const Votes = () => {
             <ProposalDetails
                 proposal={selectedProposal}
                 onBack={() => {
+                    window.location.hash = '#proposals';
                     setView('list');
                     setSelectedProposal(null);
                 }}
@@ -202,6 +204,9 @@ const Votes = () => {
                     if (categoryProposals.length === 0) return null;
                     if (activeCategory !== 'All' && activeCategory !== cat) return null;
 
+                    const isExpanded = expandedCategories[cat];
+                    const displayedProposals = isExpanded ? categoryProposals : categoryProposals.slice(0, 3);
+
                     return (
                         <div key={cat} className="space-y-6">
                             <div className="flex items-center gap-2 text-navy border-b border-slate-200 pb-2">
@@ -209,46 +214,76 @@ const Votes = () => {
                                 <h2 className="text-xl font-bold uppercase">{cat}</h2>
                             </div>
                             <div className="grid gap-6">
-                                {categoryProposals.map(proposal => (
+                                {displayedProposals.map(proposal => (
                                     <ProposalCard
                                         key={proposal.id}
                                         proposal={proposal}
                                         userVote={userVotes[proposal.id]}
                                         onVote={handleVote}
                                         onViewDetails={() => {
+                                            window.location.hash = `#proposals/${proposal.id}`;
                                             setSelectedProposal(proposal);
                                             setView('details');
                                         }}
                                     />
                                 ))}
                             </div>
+                            {categoryProposals.length > 3 && !isExpanded && (
+                                <motion.button
+                                    whileHover={{ scale: 1.01, backgroundColor: 'rgba(212, 175, 55, 0.05)', borderColor: '#D4AF37' }}
+                                    whileTap={{ scale: 0.99 }}
+                                    onClick={() => setExpandedCategories(prev => ({ ...prev, [cat]: true }))}
+                                    className="w-full py-4 bg-white text-navy font-black uppercase text-[10px] tracking-[0.2em] rounded-2xl transition-all border-2 border-dashed border-slate-200 flex items-center justify-center gap-2 group"
+                                >
+                                    View More ({categoryProposals.length - 3})
+                                    <ChevronDown size={14} className="text-gold group-hover:translate-y-0.5 transition-transform" />
+                                </motion.button>
+                            )}
                         </div>
                     );
                 })}
 
                 {/* Legacy/Miscellaneous Catch-all */}
-                {(activeCategory === 'All' || !categories.includes(activeCategory)) && filteredProposals.some(p => !categories.includes(p.category)) && (
-                    <div className="space-y-6 pt-12">
-                        <div className="flex items-center gap-2 text-slate-400 border-b border-slate-200 pb-2">
-                            <Filter size={20} />
-                            <h2 className="text-xl font-bold uppercase">Miscellaneous / Legacy</h2>
+                {(activeCategory === 'All' || !categories.includes(activeCategory)) && filteredProposals.some(p => !categories.includes(p.category)) && (() => {
+                    const miscProposals = filteredProposals.filter(p => !categories.includes(p.category));
+                    const isExpanded = expandedCategories['Miscellaneous'];
+                    const displayedProposals = isExpanded ? miscProposals : miscProposals.slice(0, 3);
+
+                    return (
+                        <div className="space-y-6 pt-12">
+                            <div className="flex items-center gap-2 text-slate-400 border-b border-slate-200 pb-2">
+                                <Filter size={20} />
+                                <h2 className="text-xl font-bold uppercase">Miscellaneous / Legacy</h2>
+                            </div>
+                            <div className="grid gap-4">
+                                {displayedProposals.map(proposal => (
+                                    <ProposalCard
+                                        key={proposal.id}
+                                        proposal={proposal}
+                                        userVote={userVotes[proposal.id]}
+                                        onVote={handleVote}
+                                        onViewDetails={() => {
+                                            window.location.hash = `#proposals/${proposal.id}`;
+                                            setSelectedProposal(proposal);
+                                            setView('details');
+                                        }}
+                                    />
+                                ))}
+                            </div>
+                            {miscProposals.length > 3 && !isExpanded && (
+                                <motion.button
+                                    whileHover={{ scale: 1.01, backgroundColor: 'rgba(212, 175, 55, 0.05)', borderColor: '#D4AF37' }}
+                                    whileTap={{ scale: 0.99 }}
+                                    onClick={() => setExpandedCategories(prev => ({ ...prev, 'Miscellaneous': true }))}
+                                    className="w-full py-4 bg-white text-navy font-black uppercase text-[10px] tracking-[0.2em] rounded-2xl transition-all border-2 border-dashed border-slate-200 flex items-center justify-center gap-2 group"
+                                >
+                                    View More ({miscProposals.length - 3})
+                                    <ChevronDown size={14} className="text-gold group-hover:translate-y-0.5 transition-transform" />
+                                </motion.button>
+                            )}
                         </div>
-                        <div className="grid gap-4">
-                            {filteredProposals.filter(p => !categories.includes(p.category)).map(proposal => (
-                                <ProposalCard
-                                    key={proposal.id}
-                                    proposal={proposal}
-                                    userVote={userVotes[proposal.id]}
-                                    onVote={handleVote}
-                                    onViewDetails={() => {
-                                        setSelectedProposal(proposal);
-                                        setView('details');
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
+                    );
+                })()}
 
                 {filteredProposals.length === 0 && (
                     <div className="py-20 bg-slate-50 rounded-[3rem] border-2 border-dashed border-slate-200 text-center">
